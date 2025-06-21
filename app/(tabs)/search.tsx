@@ -13,11 +13,12 @@ export default function SearchScreen() {
   const filteredIdioms = useMemo(() => {
     if (!searchQuery.trim()) return idioms;
     
+    const query = searchQuery.toLowerCase().trim();
     return idioms.filter(idiom => 
-      idiom.idiom.includes(searchQuery) ||
-      idiom.pinyin.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      idiom.meaning.includes(searchQuery) ||
-      idiom.category.includes(searchQuery)
+      idiom.idiom.toLowerCase().includes(query) ||
+      idiom.pinyin.toLowerCase().includes(query) ||
+      idiom.meaning.toLowerCase().includes(query) ||
+      idiom.category.toLowerCase().includes(query)
     );
   }, [searchQuery]);
 
