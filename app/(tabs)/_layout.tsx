@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { Chrome as Home, Search, Heart, User } from 'lucide-react-native';
+import { Chrome as Home, Search, Heart, User, BarChart3 } from 'lucide-react-native';
 
 export default function TabLayout() {
   return (
@@ -38,6 +38,15 @@ export default function TabLayout() {
           title: '搜索',
           tabBarIcon: ({ size, color }) => (
             <Search size={size} color={color} strokeWidth={2} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="statistics"
+        options={{
+          title: '统计',
+          tabBarIcon: ({ size, color }) => (
+            <BarChart3 size={size} color={color} strokeWidth={2} />
           ),
         }}
       />

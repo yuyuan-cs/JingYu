@@ -1,32 +1,50 @@
-import React, { useState, useMemo } from 'react';
-import { View, Text, StyleSheet, FlatList, SafeAreaView, TextInput } from 'react-native';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { View, Text, StyleSheet, FlatList, SafeAreaView, TextInput, ActivityIndicator, Platform } from 'react-native';
 import { Search as SearchIcon, X } from 'lucide-react-native';
 import { router } from 'expo-router';
 import IdiomCard from '@/components/IdiomCard';
-import { idioms } from '@/data/idioms';
+import { useSupabaseIdiomSearch, useSupabaseIdioms } from '@/hooks/useSupabaseApi';
 import { TouchableOpacity } from 'react-native';
 
 export default function SearchScreen() {
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
+  const searchInputRef = useRef<TextInput>(null);
+  const debounceTimer = useRef<any>(null);
 
-  const filteredIdioms = useMemo(() => {
-    if (!searchQuery.trim()) return idioms;
+  // 防抖处理搜索查询
+  useEffect(() => {
+    if (debounceTimer.current) {
+      clearTimeout(debounceTimer.current);
+    }
     
-    const query = searchQuery.toLowerCase().trim();
-    return idioms.filter(idiom => 
-      idiom.idiom.toLowerCase().includes(query) ||
-      idiom.pinyin.toLowerCase().includes(query) ||
-      idiom.meaning.toLowerCase().includes(query) ||
-      idiom.category.toLowerCase().includes(query)
-    );
+    debounceTimer.current = setTimeout(() => {
+      setDebouncedQuery(searchQuery.trim());
+    }, 300);
+
+    return () => {
+      if (debounceTimer.current) {
+        clearTimeout(debounceTimer.current);
+      }
+    };
   }, [searchQuery]);
 
-  const handleIdiomPress = (idiomId: string) => {
-    router.push(`/idiom/${idiomId}`);
-  };
+  // 搜索hook现在已经优化，会自动处理空查询
+  const { data: searchResults, loading: searchLoading } = useSupabaseIdiomSearch(
+    debouncedQuery, 
+    undefined // 搜索所有字段
+  );
 
-  const toggleFavorite = (idiomId: string) => {
+  // 显示搜索结果
+  const displayIdioms = useMemo(() => searchResults || [], [searchResults]);
+  const isLoading = searchLoading;
+
+  const handleIdiomPress = useCallback((idiomId: string) => {
+    router.push(`/idiom/${idiomId}`);
+  }, []);
+
+  const toggleFavorite = useCallback((idiomId: string) => {
     setFavorites(prev => {
       const newFavorites = new Set(prev);
       if (newFavorites.has(idiomId)) {
@@ -36,25 +54,30 @@ export default function SearchScreen() {
       }
       return newFavorites;
     });
-  };
+  }, []);
 
-  const clearSearch = () => {
+  const clearSearch = useCallback(() => {
     setSearchQuery('');
-  };
+  }, []);
 
-  const renderHeader = () => (
+  const renderSearchHeader = useMemo(() => (
     <View style={styles.header}>
       <Text style={styles.title}>搜索成语</Text>
       <View style={styles.searchContainer}>
         <SearchIcon size={20} color="#666666" strokeWidth={2} />
         <TextInput
-          style={styles.searchInput}
+          ref={searchInputRef}
+          style={[
+            styles.searchInput,
+            Platform.OS === 'web' && styles.webSearchInput
+          ]}
           placeholder="输入成语、拼音或含义"
           placeholderTextColor="#999999"
           value={searchQuery}
           onChangeText={setSearchQuery}
           autoCorrect={false}
           autoCapitalize="none"
+          returnKeyType="search"
         />
         {searchQuery.length > 0 && (
           <TouchableOpacity onPress={clearSearch} style={styles.clearButton}>
@@ -62,44 +85,86 @@ export default function SearchScreen() {
           </TouchableOpacity>
         )}
       </View>
-      {searchQuery.trim() && (
-        <Text style={styles.resultCount}>
-          找到 {filteredIdioms.length} 个相关成语
-        </Text>
-      )}
     </View>
-  );
+  ), [searchQuery, clearSearch]);
 
-  const renderEmptyState = () => (
-    <View style={styles.emptyState}>
-      <SearchIcon size={48} color="#CCCCCC" strokeWidth={1.5} />
-      <Text style={styles.emptyText}>
-        {searchQuery.trim() ? '未找到相关成语' : '输入关键词开始搜索'}
-      </Text>
-    </View>
-  );
+  const renderResultsHeader = useMemo(() => {
+    if (!debouncedQuery.trim() && !isLoading) return null;
+    
+    return (
+      <View style={styles.resultsHeader}>
+        {debouncedQuery.trim() && !isLoading && displayIdioms && (
+          <Text style={styles.resultCount}>
+            {displayIdioms.length > 0 
+              ? `找到 ${displayIdioms.length} 个相关成语 · 按相关性排序`
+              : '未找到相关成语'
+            }
+          </Text>
+        )}
+        {isLoading && (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="small" color="#FF6B6B" />
+            <Text style={styles.loadingText}>搜索中...</Text>
+          </View>
+        )}
+      </View>
+    );
+  }, [debouncedQuery, displayIdioms, isLoading]);
 
-  const renderIdiom = ({ item }) => (
+  const renderEmptyState = useCallback(() => {
+    // 默认状态：没有搜索查询
+    if (!debouncedQuery.trim()) {
+      return (
+        <View style={styles.emptyState}>
+          <SearchIcon size={48} color="#CCCCCC" strokeWidth={1.5} />
+          <Text style={styles.emptyText}>请输入成语、拼音或含义开始搜索</Text>
+          <Text style={styles.emptySubText}>支持搜索 30,000+ 条成语数据</Text>
+        </View>
+      );
+    }
+    
+    // 有查询但没有结果，且不在加载中
+    if (debouncedQuery.trim() && !isLoading && displayIdioms && displayIdioms.length === 0) {
+      return (
+        <View style={styles.emptyState}>
+          <SearchIcon size={48} color="#CCCCCC" strokeWidth={1.5} />
+          <Text style={styles.emptyText}>试试其他关键词</Text>
+          <Text style={styles.emptySubText}>支持成语、拼音、含义、出处搜索</Text>
+        </View>
+      );
+    }
+    
+    return null;
+  }, [debouncedQuery, isLoading, displayIdioms]);
+
+  const renderIdiom = useCallback(({ item }: { item: any }) => (
     <IdiomCard
       idiom={item}
       onPress={() => handleIdiomPress(item.id)}
       onFavorite={() => toggleFavorite(item.id)}
       isFavorited={favorites.has(item.id)}
     />
-  );
+  ), [handleIdiomPress, toggleFavorite, favorites]);
+
+  const keyExtractor = useCallback((item: any) => item.id, []);
+  
+  const listEmptyComponent = useMemo(() => {
+    return !isLoading ? renderEmptyState : null;
+  }, [isLoading, renderEmptyState]);
 
   return (
     <SafeAreaView style={styles.container}>
+      {renderSearchHeader}
       <FlatList
-        data={filteredIdioms}
+        data={displayIdioms}
         renderItem={renderIdiom}
-        keyExtractor={(item) => item.id}
-        ListHeaderComponent={renderHeader}
-        ListEmptyComponent={renderEmptyState}
+        keyExtractor={keyExtractor}
+        ListHeaderComponent={renderResultsHeader}
+        ListEmptyComponent={listEmptyComponent}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[
           styles.listContent,
-          filteredIdioms.length === 0 && { flex: 1 }
+          (!displayIdioms || displayIdioms.length === 0) && { flex: 1 }
         ]}
       />
     </SafeAreaView>
@@ -118,6 +183,10 @@ const styles = StyleSheet.create({
     paddingTop: 40,
     paddingBottom: 24,
     paddingHorizontal: 20,
+  },
+  resultsHeader: {
+    paddingHorizontal: 20,
+    paddingBottom: 16,
   },
   title: {
     fontFamily: 'NotoSerifSC-Medium',
@@ -153,6 +222,20 @@ const styles = StyleSheet.create({
     color: '#1A1A1A',
     marginLeft: 12,
     marginRight: 8,
+    // 确保在所有平台上都能正常工作
+    minHeight: 20,
+    paddingVertical: 0,
+    paddingHorizontal: 0,
+  },
+  webSearchInput: {
+    // Web 平台特定样式
+    outlineStyle: 'none' as any,
+    borderWidth: 0,
+    backgroundColor: 'transparent',
+    // 确保输入框在 Web 上能正常工作
+    fontFamily: 'Inter-Regular',
+    fontSize: 16,
+    color: '#1A1A1A',
   },
   clearButton: {
     padding: 4,
@@ -175,5 +258,24 @@ const styles = StyleSheet.create({
     color: '#999999',
     textAlign: 'center',
     marginTop: 16,
+  },
+  emptySubText: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 14,
+    color: '#CCCCCC',
+    textAlign: 'center',
+    marginTop: 8,
+  },
+  loadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+  },
+  loadingText: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 14,
+    color: '#666666',
+    marginLeft: 8,
   },
 });
