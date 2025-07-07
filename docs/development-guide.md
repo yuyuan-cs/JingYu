@@ -59,6 +59,8 @@ npm install
 #### 3. 启动开发服务器
 ```bash
 npm run dev
+# 若您使用 Windows，脚本已通过 cross-env 处理环境变量，
+# 无需额外设置即可正常运行。
 ```
 
 #### 4. 运行应用

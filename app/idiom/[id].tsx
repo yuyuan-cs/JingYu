@@ -19,7 +19,12 @@ const SPACING = {
 };
 
 // Enhanced sticker outline text component
-const OutlinedText = ({ children, style, outlineColor = '#FFFFFF', outlineWidth = 1 }) => {
+const OutlinedText = ({ children, style, outlineColor = '#FFFFFF', outlineWidth = 1 }: {
+  children: React.ReactNode;
+  style?: any;
+  outlineColor?: string;
+  outlineWidth?: number;
+}) => {
   const outlineStyle = {
     position: 'absolute',
     top: 0,

@@ -14,6 +14,11 @@ import {
   Inter_600SemiBold,
 } from '@expo-google-fonts/inter';
 import * as SplashScreen from 'expo-splash-screen';
+import { AuthProvider } from '@/components/AuthProvider';
+import FontAwesome from '@expo/vector-icons/FontAwesome';
+import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
+import { useColorScheme } from 'react-native';
+import { AuthContext, useAuth } from '../hooks/useAuth';
 
 // Prevent splash screen from auto-hiding
 SplashScreen.preventAutoHideAsync();
@@ -28,6 +33,7 @@ export default function RootLayout() {
     'Inter-Regular': Inter_400Regular,
     'Inter-Medium': Inter_500Medium,
     'Inter-SemiBold': Inter_600SemiBold,
+    ...FontAwesome.font,
   });
 
   useEffect(() => {
@@ -40,14 +46,28 @@ export default function RootLayout() {
     return null;
   }
 
+  return <RootLayoutNav />;
+}
+
+function RootLayoutNav() {
+  const colorScheme = useColorScheme();
+
   return (
-    <>
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="idiom/[id]" />
-        <Stack.Screen name="+not-found" />
-      </Stack>
+    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+      <AuthProvider>
+        <Stack>
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen name="auth" options={{ headerShown: false }} />
+          <Stack.Screen name="profile" options={{ headerShown: false }} />
+          <Stack.Screen name="settings" options={{ headerShown: false }} />
+          <Stack.Screen name="achievements" options={{ headerShown: false }} />
+          <Stack.Screen name="quiz" options={{ headerShown: false }} />
+          <Stack.Screen name="idiom" options={{ headerShown: false }} />
+          <Stack.Screen name="gaopin" options={{ headerShown: false }} />
+          <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
+        </Stack>
+      </AuthProvider>
       <StatusBar style="dark" />
-    </>
+    </ThemeProvider>
   );
 }

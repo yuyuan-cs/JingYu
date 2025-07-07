@@ -187,6 +187,37 @@ export default function HomeScreen() {
     </View>
   );
 
+  const renderQuickActions = () => (
+    <View style={styles.quickActionsSection}>
+      <Text style={styles.sectionTitle}>快速学习</Text>
+      <View style={styles.quickActionsContainer}>
+        <TouchableOpacity 
+          style={styles.quickActionCard}
+          onPress={() => router.push('/gaopin')}
+          activeOpacity={0.8}
+        >
+          <View style={[styles.quickActionIcon, { backgroundColor: '#FF6B6B' }]}>
+            <Flame size={20} color="#FFFFFF" strokeWidth={2} />
+          </View>
+          <Text style={styles.quickActionTitle}>高频词汇</Text>
+          <Text style={styles.quickActionSubtitle}>精选常用成语</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity 
+          style={styles.quickActionCard}
+          onPress={() => router.push('/quiz')}
+          activeOpacity={0.8}
+        >
+          <View style={[styles.quickActionIcon, { backgroundColor: '#4ECDC4' }]}>
+            <Target size={20} color="#FFFFFF" strokeWidth={2} />
+          </View>
+          <Text style={styles.quickActionTitle}>智能测试</Text>
+          <Text style={styles.quickActionSubtitle}>检验学习成果</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+
   const renderHeader = () => (
     <View style={styles.headerContainer}>
       <LinearGradient
@@ -241,6 +272,7 @@ export default function HomeScreen() {
         {renderTodayIdiomCard()}
         {renderProgressSection()}
         {renderCentralButton()}
+        {renderQuickActions()}
         {renderRecentIdioms()}
       </ScrollView>
     </SafeAreaView>
@@ -478,5 +510,50 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#FF6B6B',
     fontWeight: '500',
+  },
+  quickActionsSection: {
+    marginHorizontal: SPACING.md,
+    marginBottom: SPACING.md,
+  },
+  quickActionsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: SPACING.sm,
+  },
+  quickActionCard: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderRadius: SPACING.sm,
+    padding: SPACING.md,
+    alignItems: 'center',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: SPACING.xs,
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: '#F0F0F0',
+  },
+  quickActionIcon: {
+    width: SPACING.xxl,
+    height: SPACING.xxl,
+    borderRadius: SPACING.md,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: SPACING.sm,
+  },
+  quickActionTitle: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 14,
+    color: '#495057',
+    fontWeight: '600',
+    marginBottom: SPACING.xs / 2,
+  },
+  quickActionSubtitle: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 12,
+    color: '#6C757D',
+    fontWeight: '400',
+    textAlign: 'center',
   },
 });

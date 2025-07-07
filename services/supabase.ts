@@ -4,12 +4,26 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = 'https://mazslkagknzmoccafzfl.supabase.co';
 const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1henNsa2Fna256bW9jY2FmemZsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE3MjQzMTAsImV4cCI6MjA2NzMwMDMxMH0.2-tXHiz01ll_Us86R3qW_ymDxf-ppA-x2hH20t7W6ns';
 
+// Service Role Key (仅用于开发环境的管理员操作)
+// 注意：在生产环境中，这应该通过环境变量或安全的后端服务来使用
+// 当前密钥无效，需要从 Supabase Dashboard 获取正确的密钥
+const supabaseServiceRoleKey = 'INVALID_KEY_PLEASE_UPDATE_FROM_DASHBOARD';
+
 // 创建Supabase客户端实例
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+// 创建管理员客户端实例（仅用于开发环境）
+export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey, {
+  auth: {
+    autoRefreshToken: false,
+    persistSession: false
+  }
+});
 
 // 数据库表名
 export const TABLES = {
   CHENGYU: 'ChengYu',
+  CHENGYU_GAOPIN: 'ChengYu_GaoPin',
   USERS: 'users',
   LEARNING_RECORDS: 'learning_records',
   FAVORITES: 'favorites',
@@ -49,7 +63,8 @@ export interface ChengYuApiRecord {
 export interface UserRecord {
   id: string;
   username: string;
-  email: string;
+  email?: string;
+  phone?: string;
   avatar_url?: string;
   created_at: string;
   updated_at: string;
@@ -200,4 +215,88 @@ export const transformChengYuRecord = (record: ChengYuRecord): ChengYuApiRecord 
 // 批量转换函数
 export const transformChengYuRecords = (records: ChengYuRecord[]): ChengYuApiRecord[] => {
   return records.map(transformChengYuRecord);
+};
+
+// 高频成语数据类型（基于Supabase ChengYu_GaoPin表的实际结构）
+export interface ChengYuGaoPinRecord {
+  word: string;  // 成语/词语 (主键)
+  Category: string | null;  // 分类
+  Confusable_Word: string | null;  // 易混淆词语
+  Confusion_Explanation: string | null;  // 混淆解释
+  "Error Prone Scenario": string | null;  // 易错场景
+  explanation: string | null;  // 解释
+  example: string | null;  // 例子
+  id: string[] | null;  // ID数组
+}
+
+// 高频成语API记录格式
+export interface ChengYuGaoPinApiRecord {
+  id: string;  // 使用 word 作为 id
+  word: string;  // 成语/词语
+  category: string;  // 分类
+  confusableWord: string;  // 易混淆词语
+  confusionExplanation: string;  // 混淆解释
+  errorProneScenario: string;  // 易错场景
+  explanation: string;  // 解释
+  example: string;  // 例子
+  difficulty: 'high' | 'medium' | 'low';  // 难度等级（根据易错程度）
+  tags: string[];  // 标签（从分类和易错场景提取）
+}
+
+// 高频成语分类枚举
+export enum GaoPinCategory {
+  BUSINESS = '商务用语',
+  ACADEMIC = '学术用语',
+  DAILY = '日常用语',
+  LITERARY = '文学用语',
+  FORMAL = '正式用语',
+  COLLOQUIAL = '口语用语',
+  WRITTEN = '书面用语',
+  TECHNICAL = '专业用语',
+}
+
+// 高频成语学习模式
+export enum GaoPinLearningMode {
+  CATEGORY = 'category',  // 按分类学习
+  CONFUSION = 'confusion',  // 易混淆词语学习
+  ERROR_PRONE = 'error_prone',  // 易错场景学习
+  RANDOM = 'random',  // 随机学习
+  REVIEW = 'review',  // 复习模式
+}
+
+// 数据转换函数：将高频成语数据库记录转换为API记录格式
+export const transformGaoPinRecord = (record: ChengYuGaoPinRecord): ChengYuGaoPinApiRecord => {
+  // 根据易错场景和混淆词语判断难度
+  const getDifficulty = (): 'high' | 'medium' | 'low' => {
+    if (record.Confusable_Word && record["Error Prone Scenario"]) return 'high';
+    if (record.Confusable_Word || record["Error Prone Scenario"]) return 'medium';
+    return 'low';
+  };
+
+  // 提取标签
+  const getTags = (): string[] => {
+    const tags: string[] = [];
+    if (record.Category) tags.push(record.Category);
+    if (record.Confusable_Word) tags.push('易混淆');
+    if (record["Error Prone Scenario"]) tags.push('易错');
+    return tags;
+  };
+
+  return {
+    id: record.word, // 使用 word 作为唯一标识
+    word: record.word,
+    category: record.Category || '未分类',
+    confusableWord: record.Confusable_Word || '',
+    confusionExplanation: record.Confusion_Explanation || '',
+    errorProneScenario: record["Error Prone Scenario"] || '',
+    explanation: record.explanation || '',
+    example: record.example || '',
+    difficulty: getDifficulty(),
+    tags: getTags(),
+  };
+};
+
+// 批量转换高频成语函数
+export const transformGaoPinRecords = (records: ChengYuGaoPinRecord[]): ChengYuGaoPinApiRecord[] => {
+  return records.map(transformGaoPinRecord);
 }; 

@@ -232,7 +232,7 @@ export default function SettingsScreen() {
     </TouchableOpacity>
   );
 
-  const renderSection = (section) => (
+  const renderSection = (section: any) => (
     <View key={section.title} style={styles.section}>
       <Text style={styles.sectionTitle}>{section.title}</Text>
       <View style={styles.sectionContent}>

@@ -41,6 +41,8 @@ interface User {
   updatedAt: string;
 }
 
+import { Idiom } from '../data/idioms';
+
 // 成语类型（扩展）
 interface IdiomApi extends Idiom {
   tags: string[];

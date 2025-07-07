@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, SafeAreaView, TouchableOpacity, Dimensions, Alert } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Play, Clock, Award, RotateCcw, CheckCircle, XCircle, ArrowRight, Home } from 'lucide-react-native';
+import { Play, Clock, Award, RotateCcw, CheckCircle, XCircle, ArrowRight, Home, LogIn } from 'lucide-react-native';
 import { router } from 'expo-router';
-import { idioms } from '@/data/idioms';
+import { useAuthContext } from '@/hooks/useAuth';
+import { useQuiz, QuizQuestion, QuizAnswer, QuizStats } from '@/hooks/useQuiz';
 
 const { width } = Dimensions.get('window');
 
@@ -21,118 +22,80 @@ const SPACING = {
 // Quiz types
 const quizTypes = [
   {
-    id: 'meaning',
+    id: 'meaning' as const,
     title: '释义选择',
     description: '根据成语选择正确释义',
     icon: '📖',
     color: '#4ECDC4',
-    difficulty: 'easy',
+    difficulty: 'easy' as const,
   },
   {
-    id: 'pinyin',
+    id: 'pinyin' as const,
     title: '拼音匹配',
     description: '选择成语的正确拼音',
     icon: '🔤',
     color: '#FFE66D',
-    difficulty: 'medium',
+    difficulty: 'medium' as const,
   },
   {
-    id: 'complete',
+    id: 'complete' as const,
     title: '成语补全',
     description: '补全缺失的成语字符',
     icon: '🧩',
     color: '#FF6B6B',
-    difficulty: 'hard',
+    difficulty: 'hard' as const,
   },
   {
-    id: 'origin',
+    id: 'origin' as const,
     title: '出处典故',
     description: '选择成语的正确出处',
     icon: '📚',
     color: '#96CEB4',
-    difficulty: 'expert',
+    difficulty: 'hard' as const,
+  },
+  {
+    id: 'mixed' as const,
+    title: '综合测试',
+    description: '混合多种题型的综合测试',
+    icon: '🎯',
+    color: '#9B59B6',
+    difficulty: 'medium' as const,
   },
 ];
 
-// Generate quiz questions
-const generateQuestions = (type: string, count: number = 5) => {
-  const shuffledIdioms = [...idioms].sort(() => Math.random() - 0.5);
-  const questions = [];
-
-  for (let i = 0; i < Math.min(count, shuffledIdioms.length); i++) {
-    const correct = shuffledIdioms[i];
-    const others = shuffledIdioms.filter(item => item.id !== correct.id)
-      .sort(() => Math.random() - 0.5)
-      .slice(0, 3);
-
-    let question;
-    switch (type) {
-      case 'meaning':
-        question = {
-          id: i + 1,
-          question: `"${correct.idiom}"的释义是？`,
-          options: [correct.meaning, ...others.map(item => item.meaning)]
-            .sort(() => Math.random() - 0.5),
-          correctAnswer: correct.meaning,
-          explanation: correct.origin,
-        };
-        break;
-      case 'pinyin':
-        question = {
-          id: i + 1,
-          question: `"${correct.idiom}"的拼音是？`,
-          options: [correct.pinyin, ...others.map(item => item.pinyin)]
-            .sort(() => Math.random() - 0.5),
-          correctAnswer: correct.pinyin,
-          explanation: `${correct.idiom} - ${correct.meaning}`,
-        };
-        break;
-      case 'complete':
-        const chars = correct.idiom.split('');
-        const hiddenIndex = Math.floor(Math.random() * chars.length);
-        const incomplete = chars.map((char, index) => 
-          index === hiddenIndex ? '？' : char
-        ).join('');
-        question = {
-          id: i + 1,
-          question: `请补全成语："${incomplete}"`,
-          options: [chars[hiddenIndex], ...others.map(item => 
-            item.idiom.split('')[hiddenIndex]
-          )].sort(() => Math.random() - 0.5),
-          correctAnswer: chars[hiddenIndex],
-          explanation: `${correct.idiom} - ${correct.meaning}`,
-        };
-        break;
-      case 'origin':
-        question = {
-          id: i + 1,
-          question: `"${correct.idiom}"出自哪里？`,
-          options: [correct.origin.split('》')[0] + '》', 
-            ...others.map(item => item.origin.split('》')[0] + '》')]
-            .sort(() => Math.random() - 0.5),
-          correctAnswer: correct.origin.split('》')[0] + '》',
-          explanation: correct.meaning,
-        };
-        break;
-    }
-    questions.push(question);
-  }
-
-  return questions;
-};
-
 export default function QuizScreen() {
-  const [currentScreen, setCurrentScreen] = useState<'menu' | 'quiz' | 'result'>('menu');
-  const [selectedQuizType, setSelectedQuizType] = useState(null);
-  const [questions, setQuestions] = useState([]);
-  const [currentQuestion, setCurrentQuestion] = useState(0);
-  const [selectedAnswer, setSelectedAnswer] = useState(null);
-  const [userAnswers, setUserAnswers] = useState([]);
-  const [timeLeft, setTimeLeft] = useState(60);
-  const [showExplanation, setShowExplanation] = useState(false);
+  const { user } = useAuthContext();
+  const { 
+    loading, 
+    error, 
+    currentQuiz, 
+    generateQuiz, 
+    submitQuizResult,
+    getQuizStats 
+  } = useQuiz();
 
+  const [currentScreen, setCurrentScreen] = useState<'menu' | 'quiz' | 'result'>('menu');
+  const [selectedQuizType, setSelectedQuizType] = useState<typeof quizTypes[0] | null>(null);
+  const [questions, setQuestions] = useState<QuizQuestion[]>([]);
+  const [currentQuestion, setCurrentQuestion] = useState(0);
+  const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
+  const [userAnswers, setUserAnswers] = useState<QuizAnswer[]>([]);
+  const [timeLeft, setTimeLeft] = useState(30);
+  const [quizStartTime, setQuizStartTime] = useState(0);
+  const [questionStartTime, setQuestionStartTime] = useState(0);
+  const [showExplanation, setShowExplanation] = useState(false);
+  const [quizStats, setQuizStats] = useState<QuizStats | null>(null);
+
+  // 加载测试统计
   useEffect(() => {
-    let timer;
+    if (user) {
+      getQuizStats().then(setQuizStats);
+    }
+  }, [user, getQuizStats]);
+
+  // 计时器
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
     if (currentScreen === 'quiz' && timeLeft > 0 && !showExplanation) {
       timer = setTimeout(() => setTimeLeft(timeLeft - 1), 1000);
     } else if (timeLeft === 0 && currentScreen === 'quiz') {
@@ -141,27 +104,57 @@ export default function QuizScreen() {
     return () => clearTimeout(timer);
   }, [timeLeft, currentScreen, showExplanation]);
 
-  const startQuiz = (quizType) => {
-    const quizQuestions = generateQuestions(quizType.id);
-    setSelectedQuizType(quizType);
-    setQuestions(quizQuestions);
-    setCurrentQuestion(0);
-    setUserAnswers([]);
-    setTimeLeft(60);
-    setCurrentScreen('quiz');
+  const startQuiz = async (quizType: typeof quizTypes[0]) => {
+    if (!user) {
+      Alert.alert(
+        '需要登录',
+        '测试功能需要登录后才能使用',
+        [
+          { text: '取消', style: 'cancel' },
+          { text: '去登录', onPress: () => router.push('/auth') },
+        ]
+      );
+      return;
+    }
+
+    try {
+      const questions = await generateQuiz(quizType.id, quizType.difficulty, 10);
+      if (questions.length === 0) {
+        Alert.alert('错误', '生成测试题目失败，请稍后重试');
+        return;
+      }
+
+      setSelectedQuizType(quizType);
+      setQuestions(questions);
+      setCurrentQuestion(0);
+      setUserAnswers([]);
+      setTimeLeft(questions[0]?.time_limit || 30);
+      setQuizStartTime(Date.now());
+      setQuestionStartTime(Date.now());
+      setCurrentScreen('quiz');
+    } catch (error) {
+      Alert.alert('错误', '生成测试失败，请稍后重试');
+    }
   };
 
-  const handleAnswerSelect = (answer) => {
-    setSelectedAnswer(answer);
+  const handleAnswerSelect = (answerIndex: number) => {
+    setSelectedAnswer(answerIndex);
   };
 
   const handleNextQuestion = () => {
-    const newUserAnswers = [...userAnswers];
-    newUserAnswers[currentQuestion] = {
-      selected: selectedAnswer,
-      correct: questions[currentQuestion].correctAnswer,
-      isCorrect: selectedAnswer === questions[currentQuestion].correctAnswer,
+    const currentQ = questions[currentQuestion];
+    const timeSpent = Math.round((Date.now() - questionStartTime) / 1000);
+    const isCorrect = selectedAnswer === currentQ.correct_answer;
+
+    const answer: QuizAnswer = {
+      question_id: currentQ.id,
+      selected_answer: selectedAnswer || 0,
+      correct_answer: currentQ.correct_answer,
+      correct: isCorrect,
+      time_spent: timeSpent,
     };
+
+    const newUserAnswers = [...userAnswers, answer];
     setUserAnswers(newUserAnswers);
 
     if (!showExplanation) {
@@ -173,20 +166,41 @@ export default function QuizScreen() {
       setCurrentQuestion(currentQuestion + 1);
       setSelectedAnswer(null);
       setShowExplanation(false);
+      setTimeLeft(questions[currentQuestion + 1]?.time_limit || 30);
+      setQuestionStartTime(Date.now());
     } else {
+      finishQuiz(newUserAnswers);
+    }
+  };
+
+  const finishQuiz = async (answers: QuizAnswer[]) => {
+    if (!user || !selectedQuizType) return;
+
+    try {
+      const totalTime = Math.round((Date.now() - quizStartTime) / 1000);
+      await submitQuizResult(selectedQuizType.id, answers, totalTime);
+      
+      // 刷新统计数据
+      const newStats = await getQuizStats();
+      setQuizStats(newStats);
+      
+      setCurrentScreen('result');
+    } catch (error) {
+      Alert.alert('错误', '提交测试结果失败');
       setCurrentScreen('result');
     }
   };
 
   const handleTimeUp = () => {
-    Alert.alert('时间到', '测试时间已结束', [
-      { text: '查看结果', onPress: () => setCurrentScreen('result') }
-    ]);
+    if (selectedAnswer === null) {
+      setSelectedAnswer(0); // 默认选择第一个选项
+    }
+    handleNextQuestion();
   };
 
   const calculateScore = () => {
-    const correctAnswers = userAnswers.filter(answer => answer.isCorrect).length;
-    return Math.round((correctAnswers / questions.length) * 100);
+    const correctAnswers = userAnswers.filter(answer => answer.correct).length;
+    return Math.round((correctAnswers / userAnswers.length) * 100);
   };
 
   const resetQuiz = () => {
@@ -196,250 +210,289 @@ export default function QuizScreen() {
     setCurrentQuestion(0);
     setSelectedAnswer(null);
     setUserAnswers([]);
-    setTimeLeft(60);
+    setTimeLeft(30);
     setShowExplanation(false);
   };
 
   const renderHeader = () => (
-    <View style={styles.headerContainer}>
-      <LinearGradient
-        colors={['#96CEB4', '#4ECDC4']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.headerGradient}
-      >
-        <View style={styles.header}>
-          <Award size={28} color="#FFFFFF" strokeWidth={2} />
-          <Text style={styles.headerTitle}>知识测试</Text>
-          <Text style={styles.headerSubtitle}>检验你的学习成果</Text>
+    <View style={styles.header}>
+      <Text style={styles.title}>知识测试</Text>
+      <Text style={styles.subtitle}>检验成语学习成果</Text>
+      
+      {user && quizStats && (
+        <View style={styles.statsContainer}>
+          <View style={styles.statItem}>
+            <Text style={styles.statNumber}>{quizStats.total_quizzes}</Text>
+            <Text style={styles.statLabel}>已完成</Text>
+          </View>
+          <View style={styles.statDivider} />
+          <View style={styles.statItem}>
+            <Text style={styles.statNumber}>{quizStats.average_score}%</Text>
+            <Text style={styles.statLabel}>平均分</Text>
+          </View>
+          <View style={styles.statDivider} />
+          <View style={styles.statItem}>
+            <Text style={styles.statNumber}>{quizStats.best_score}%</Text>
+            <Text style={styles.statLabel}>最高分</Text>
+          </View>
         </View>
-      </LinearGradient>
+      )}
+    </View>
+  );
+
+  const renderAuthPrompt = () => (
+    <View style={styles.authPrompt}>
+      <LogIn size={48} color="#3498db" />
+      <Text style={styles.authPromptTitle}>登录后开始测试</Text>
+      <Text style={styles.authPromptSubtitle}>
+        登录账户，保存测试记录和成绩
+      </Text>
+      <TouchableOpacity
+        style={styles.authButton}
+        onPress={() => router.push('/auth')}
+      >
+        <Text style={styles.authButtonText}>立即登录</Text>
+      </TouchableOpacity>
     </View>
   );
 
   const renderQuizMenu = () => (
-    <ScrollView 
-      style={styles.scrollView}
-      showsVerticalScrollIndicator={false}
-      contentContainerStyle={styles.scrollContent}
-    >
-      <View style={styles.menuContainer}>
-        <Text style={styles.menuTitle}>选择测试类型</Text>
-        <Text style={styles.menuSubtitle}>选择适合你的难度级别</Text>
-        
-        <View style={styles.quizTypesContainer}>
-          {quizTypes.map((quizType) => (
-            <TouchableOpacity
-              key={quizType.id}
-              style={[styles.quizTypeCard, { borderColor: `${quizType.color}40` }]}
-              onPress={() => startQuiz(quizType)}
-              activeOpacity={0.8}
+    <ScrollView showsVerticalScrollIndicator={false}>
+      {!user && renderAuthPrompt()}
+      
+      <View style={styles.quizTypesContainer}>
+        {quizTypes.map((quizType, index) => (
+          <TouchableOpacity
+            key={quizType.id}
+            style={[
+              styles.quizTypeCard,
+              { borderColor: quizType.color + '30' }
+            ]}
+            onPress={() => startQuiz(quizType)}
+            disabled={!user || loading}
+          >
+            <LinearGradient
+              colors={[quizType.color + '10', quizType.color + '05']}
+              style={styles.quizTypeGradient}
             >
-              <View style={[styles.quizTypeIcon, { backgroundColor: `${quizType.color}15` }]}>
-                <Text style={styles.quizTypeEmoji}>{quizType.icon}</Text>
-              </View>
-              
-              <View style={styles.quizTypeInfo}>
-                <Text style={styles.quizTypeTitle}>{quizType.title}</Text>
-                <Text style={styles.quizTypeDescription}>{quizType.description}</Text>
-                
-                <View style={styles.quizTypeMeta}>
-                  <View style={[styles.difficultyBadge, { backgroundColor: quizType.color }]}>
-                    <Text style={styles.difficultyText}>
-                      {quizType.difficulty === 'easy' ? '简单' : 
-                       quizType.difficulty === 'medium' ? '中等' :
-                       quizType.difficulty === 'hard' ? '困难' : '专家'}
-                    </Text>
-                  </View>
-                  <View style={styles.quizMeta}>
-                    <Clock size={14} color="#6C757D" strokeWidth={2} />
-                    <Text style={styles.quizMetaText}>5题 · 1分钟</Text>
-                  </View>
+              <View style={styles.quizTypeHeader}>
+                <Text style={styles.quizTypeIcon}>{quizType.icon}</Text>
+                <View style={[styles.difficultyBadge, { backgroundColor: quizType.color + '20' }]}>
+                  <Text style={[styles.difficultyText, { color: quizType.color }]}>
+                    {quizType.difficulty === 'easy' ? '简单' : 
+                     quizType.difficulty === 'medium' ? '中等' : '困难'}
+                  </Text>
                 </View>
               </View>
               
-              <ArrowRight size={20} color="#ADB5BD" strokeWidth={2} />
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        <View style={styles.tipsContainer}>
-          <Text style={styles.tipsTitle}>💡 测试提示</Text>
-          <Text style={styles.tipsText}>• 每次测试包含5道题目</Text>
-          <Text style={styles.tipsText}>• 建议在安静环境下进行测试</Text>
-          <Text style={styles.tipsText}>• 测试结果会记录到学习统计中</Text>
-        </View>
+              <Text style={styles.quizTypeTitle}>{quizType.title}</Text>
+              <Text style={styles.quizTypeDescription}>{quizType.description}</Text>
+              
+              <View style={styles.quizTypeActions}>
+                <View style={[styles.startButton, { backgroundColor: quizType.color }]}>
+                  <Play size={16} color="#FFFFFF" />
+                  <Text style={styles.startButtonText}>开始测试</Text>
+                </View>
+              </View>
+            </LinearGradient>
+          </TouchableOpacity>
+        ))}
       </View>
     </ScrollView>
   );
 
   const renderQuizScreen = () => {
-    const question = questions[currentQuestion];
-    const isAnswered = selectedAnswer !== null;
-    const isCorrect = selectedAnswer === question?.correctAnswer;
+    if (questions.length === 0) return null;
+    
+    const currentQ = questions[currentQuestion];
+    const progress = ((currentQuestion + 1) / questions.length) * 100;
 
     return (
       <View style={styles.quizContainer}>
+        {/* Progress Header */}
         <View style={styles.quizHeader}>
           <View style={styles.progressContainer}>
-            <Text style={styles.progressText}>
-              {currentQuestion + 1}/{questions.length}
-            </Text>
             <View style={styles.progressBar}>
-              <View 
-                style={[
-                  styles.progressFill,
-                  { width: `${((currentQuestion + 1) / questions.length) * 100}%` }
-                ]}
-              />
+              <View style={[styles.progressFill, { width: `${progress}%` }]} />
             </View>
+            <Text style={styles.progressText}>
+              {currentQuestion + 1} / {questions.length}
+            </Text>
           </View>
           
           <View style={styles.timerContainer}>
-            <Clock size={16} color={timeLeft <= 10 ? '#FF6B6B' : '#6C757D'} strokeWidth={2} />
-            <Text style={[styles.timerText, timeLeft <= 10 && styles.timerTextUrgent]}>
-              {Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, '0')}
+            <Clock size={16} color={timeLeft <= 5 ? '#FF6B6B' : '#666666'} />
+            <Text style={[
+              styles.timerText,
+              { color: timeLeft <= 5 ? '#FF6B6B' : '#666666' }
+            ]}>
+              {timeLeft}s
             </Text>
           </View>
         </View>
 
-        <ScrollView style={styles.questionScrollView}>
-          <Text style={styles.questionText}>{question?.question}</Text>
+        {/* Question */}
+        <ScrollView style={styles.questionContainer} showsVerticalScrollIndicator={false}>
+          <Text style={styles.questionText}>{currentQ.question}</Text>
           
           <View style={styles.optionsContainer}>
-            {question?.options.map((option, index) => {
-              let optionStyle = [styles.optionButton];
-              let textStyle = [styles.optionText];
-              
-              if (showExplanation) {
-                if (option === question.correctAnswer) {
-                  optionStyle.push(styles.optionCorrect);
-                  textStyle.push(styles.optionTextCorrect);
-                } else if (option === selectedAnswer && option !== question.correctAnswer) {
-                  optionStyle.push(styles.optionIncorrect);
-                  textStyle.push(styles.optionTextIncorrect);
-                }
-              } else if (selectedAnswer === option) {
-                optionStyle.push(styles.optionSelected);
-                textStyle.push(styles.optionTextSelected);
-              }
-              
-              return (
-                <TouchableOpacity
-                  key={index}
-                  style={optionStyle}
-                  onPress={() => !showExplanation && handleAnswerSelect(option)}
-                  disabled={showExplanation}
-                >
-                  <Text style={textStyle}>{option}</Text>
-                  {showExplanation && option === question.correctAnswer && (
-                    <CheckCircle size={20} color="#28A745" strokeWidth={2} />
-                  )}
-                  {showExplanation && option === selectedAnswer && option !== question.correctAnswer && (
-                    <XCircle size={20} color="#DC3545" strokeWidth={2} />
-                  )}
-                </TouchableOpacity>
-              );
-            })}
+            {currentQ.options.map((option, index) => (
+              <TouchableOpacity
+                key={index}
+                style={[
+                  styles.optionButton,
+                  selectedAnswer === index && styles.selectedOption,
+                  showExplanation && index === currentQ.correct_answer && styles.correctOption,
+                  showExplanation && selectedAnswer === index && index !== currentQ.correct_answer && styles.wrongOption,
+                ]}
+                onPress={() => handleAnswerSelect(index)}
+                disabled={showExplanation}
+              >
+                <View style={styles.optionContent}>
+                  <Text style={styles.optionLabel}>{String.fromCharCode(65 + index)}</Text>
+                  <Text style={[
+                    styles.optionText,
+                    selectedAnswer === index && styles.selectedOptionText,
+                    showExplanation && index === currentQ.correct_answer && styles.correctOptionText,
+                    showExplanation && selectedAnswer === index && index !== currentQ.correct_answer && styles.wrongOptionText,
+                  ]}>
+                    {option}
+                  </Text>
+                </View>
+                
+                {showExplanation && (
+                  <View style={styles.optionIcon}>
+                    {index === currentQ.correct_answer ? (
+                      <CheckCircle size={20} color="#27AE60" />
+                    ) : selectedAnswer === index ? (
+                      <XCircle size={20} color="#E74C3C" />
+                    ) : null}
+                  </View>
+                )}
+              </TouchableOpacity>
+            ))}
           </View>
 
           {showExplanation && (
             <View style={styles.explanationContainer}>
               <Text style={styles.explanationTitle}>
-                {isCorrect ? '✅ 回答正确！' : '❌ 回答错误'}
+                {userAnswers[userAnswers.length - 1]?.correct ? '回答正确！' : '回答错误'}
               </Text>
-              <Text style={styles.explanationText}>{question.explanation}</Text>
+              <Text style={styles.explanationText}>
+                正确答案：{currentQ.options[currentQ.correct_answer]}
+              </Text>
             </View>
           )}
         </ScrollView>
 
-        <TouchableOpacity
-          style={[styles.nextButton, !isAnswered && styles.nextButtonDisabled]}
-          onPress={handleNextQuestion}
-          disabled={!isAnswered}
-        >
-          <Text style={[styles.nextButtonText, !isAnswered && styles.nextButtonTextDisabled]}>
-            {showExplanation 
-              ? (currentQuestion < questions.length - 1 ? '下一题' : '查看结果')
-              : '确认答案'
-            }
-          </Text>
-        </TouchableOpacity>
+        {/* Next Button */}
+        <View style={styles.quizActions}>
+          <TouchableOpacity
+            style={[
+              styles.nextButton,
+              selectedAnswer === null && !showExplanation && styles.nextButtonDisabled
+            ]}
+            onPress={handleNextQuestion}
+            disabled={selectedAnswer === null && !showExplanation}
+          >
+            <Text style={styles.nextButtonText}>
+              {showExplanation ? 
+                (currentQuestion === questions.length - 1 ? '完成测试' : '下一题') : 
+                '确认答案'
+              }
+            </Text>
+            <ArrowRight size={16} color="#FFFFFF" />
+          </TouchableOpacity>
+        </View>
       </View>
     );
   };
 
   const renderResultScreen = () => {
     const score = calculateScore();
-    const correctCount = userAnswers.filter(answer => answer.isCorrect).length;
+    const correctCount = userAnswers.filter(a => a.correct).length;
+    const totalQuestions = userAnswers.length;
     
+    let performanceLevel = '';
+    let performanceColor = '';
+    let performanceIcon = '';
+    
+    if (score >= 90) {
+      performanceLevel = '优秀';
+      performanceColor = '#27AE60';
+      performanceIcon = '🏆';
+    } else if (score >= 80) {
+      performanceLevel = '良好';
+      performanceColor = '#F39C12';
+      performanceIcon = '🥈';
+    } else if (score >= 60) {
+      performanceLevel = '及格';
+      performanceColor = '#3498DB';
+      performanceIcon = '🥉';
+    } else {
+      performanceLevel = '需要努力';
+      performanceColor = '#E74C3C';
+      performanceIcon = '📚';
+    }
+
     return (
-      <ScrollView 
-        style={styles.scrollView}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
-      >
-        <View style={styles.resultContainer}>
-          <View style={styles.scoreContainer}>
-            <LinearGradient
-              colors={score >= 80 ? ['#28A745', '#20C997'] : 
-                     score >= 60 ? ['#FFE66D', '#FF8A80'] : 
-                     ['#FF6B6B', '#DC3545']}
-              style={styles.scoreCircle}
-            >
-              <Text style={styles.scoreText}>{score}分</Text>
-            </LinearGradient>
-            
-            <Text style={styles.scoreTitle}>
-              {score >= 80 ? '🎉 优秀！' : 
-               score >= 60 ? '👍 良好！' : 
-               '💪 继续努力！'}
+      <ScrollView style={styles.resultContainer} showsVerticalScrollIndicator={false}>
+        {/* Score Display */}
+        <View style={styles.scoreContainer}>
+          <Text style={styles.scoreIcon}>{performanceIcon}</Text>
+          <Text style={styles.scoreTitle}>测试完成</Text>
+          <Text style={[styles.scoreValue, { color: performanceColor }]}>{score}分</Text>
+          <Text style={[styles.performanceLevel, { color: performanceColor }]}>{performanceLevel}</Text>
+          
+          <View style={styles.scoreDetails}>
+            <Text style={styles.scoreDetailText}>
+              答对 {correctCount} 题，共 {totalQuestions} 题
             </Text>
-            <Text style={styles.scoreSubtitle}>
-              答对 {correctCount}/{questions.length} 题
+            <Text style={styles.scoreDetailText}>
+              正确率：{Math.round((correctCount / totalQuestions) * 100)}%
             </Text>
           </View>
-
-          <View style={styles.resultStats}>
-            <View style={styles.resultStat}>
-              <Text style={styles.resultStatNumber}>{correctCount}</Text>
-              <Text style={styles.resultStatLabel}>正确</Text>
-            </View>
-            <View style={styles.resultStat}>
-              <Text style={styles.resultStatNumber}>{questions.length - correctCount}</Text>
-              <Text style={styles.resultStatLabel}>错误</Text>
-            </View>
-            <View style={styles.resultStat}>
-              <Text style={styles.resultStatNumber}>{60 - timeLeft}</Text>
-              <Text style={styles.resultStatLabel}>用时(秒)</Text>
-            </View>
-          </View>
-
-          <View style={styles.resultActions}>
-            <TouchableOpacity
-              style={[styles.actionButton, styles.retryButton]}
-              onPress={() => startQuiz(selectedQuizType)}
-            >
-              <RotateCcw size={20} color="#FFFFFF" strokeWidth={2} />
-              <Text style={styles.actionButtonText}>重新测试</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity
-              style={[styles.actionButton, styles.homeButton]}
-              onPress={resetQuiz}
-            >
-              <Home size={20} color="#495057" strokeWidth={2} />
-              <Text style={[styles.actionButtonText, { color: '#495057' }]}>返回首页</Text>
-            </TouchableOpacity>
-          </View>
-
-          {score >= 80 && (
-            <View style={styles.achievementContainer}>
-              <Text style={styles.achievementTitle}>🏆 解锁成就</Text>
-              <Text style={styles.achievementText}>学霸表现 - 测试得分超过80分</Text>
-            </View>
-          )}
         </View>
+
+        {/* Actions */}
+        <View style={styles.resultActions}>
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={resetQuiz}
+          >
+            <RotateCcw size={20} color="#3498DB" />
+            <Text style={styles.actionButtonText}>重新测试</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={[styles.actionButton, styles.primaryActionButton]}
+            onPress={() => router.push('/(tabs)')}
+          >
+            <Home size={20} color="#FFFFFF" />
+            <Text style={[styles.actionButtonText, styles.primaryActionButtonText]}>返回首页</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Updated Stats */}
+        {user && quizStats && (
+          <View style={styles.updatedStatsContainer}>
+            <Text style={styles.updatedStatsTitle}>更新后的统计</Text>
+            <View style={styles.updatedStatsGrid}>
+              <View style={styles.updatedStatItem}>
+                <Text style={styles.updatedStatNumber}>{quizStats.total_quizzes}</Text>
+                <Text style={styles.updatedStatLabel}>总测试数</Text>
+              </View>
+              <View style={styles.updatedStatItem}>
+                <Text style={styles.updatedStatNumber}>{quizStats.average_score}%</Text>
+                <Text style={styles.updatedStatLabel}>平均分</Text>
+              </View>
+              <View style={styles.updatedStatItem}>
+                <Text style={styles.updatedStatNumber}>{quizStats.accuracy_rate}%</Text>
+                <Text style={styles.updatedStatLabel}>正确率</Text>
+              </View>
+            </View>
+          </View>
+        )}
       </ScrollView>
     );
   };
@@ -447,6 +500,7 @@ export default function QuizScreen() {
   return (
     <SafeAreaView style={styles.container}>
       {renderHeader()}
+      
       {currentScreen === 'menu' && renderQuizMenu()}
       {currentScreen === 'quiz' && renderQuizScreen()}
       {currentScreen === 'result' && renderResultScreen()}
@@ -459,108 +513,104 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F8F9FA',
   },
-  headerContainer: {
-    marginBottom: SPACING.md,
-  },
-  headerGradient: {
-    paddingTop: SPACING.xl,
-    paddingBottom: SPACING.lg,
-    paddingHorizontal: SPACING.md,
-  },
   header: {
-    alignItems: 'center',
+    padding: SPACING.md,
   },
-  headerTitle: {
+  title: {
     fontFamily: 'Inter-Bold',
     fontSize: 24,
-    color: '#FFFFFF',
+    color: '#495057',
     fontWeight: '700',
-    marginTop: SPACING.xs,
     marginBottom: SPACING.xs,
   },
-  headerSubtitle: {
+  subtitle: {
     fontFamily: 'Inter-Medium',
     fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.9)',
+    color: '#6C757D',
     fontWeight: '500',
   },
-  scrollView: {
+  statsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: SPACING.md,
+  },
+  statItem: {
     flex: 1,
+    alignItems: 'center',
   },
-  scrollContent: {
-    paddingBottom: SPACING.xxl,
+  statNumber: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 24,
+    color: '#495057',
+    fontWeight: '700',
   },
-  menuContainer: {
-    paddingHorizontal: SPACING.md,
+  statLabel: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 12,
+    color: '#6C757D',
+    fontWeight: '400',
   },
-  menuTitle: {
+  statDivider: {
+    width: 1,
+    height: '100%',
+    backgroundColor: '#E9ECEF',
+  },
+  authPrompt: {
+    alignItems: 'center',
+    padding: SPACING.md,
+  },
+  authPromptTitle: {
     fontFamily: 'Inter-Bold',
     fontSize: 20,
     color: '#495057',
     fontWeight: '700',
     marginBottom: SPACING.xs,
-    textAlign: 'center',
   },
-  menuSubtitle: {
+  authPromptSubtitle: {
     fontFamily: 'Inter-Regular',
     fontSize: 14,
     color: '#6C757D',
     fontWeight: '400',
     textAlign: 'center',
-    marginBottom: SPACING.md,
+  },
+  authButton: {
+    backgroundColor: '#4ECDC4',
+    borderRadius: SPACING.sm,
+    padding: SPACING.sm,
+  },
+  authButtonText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 16,
+    color: '#FFFFFF',
+    fontWeight: '600',
   },
   quizTypesContainer: {
-    gap: SPACING.sm,
-    marginBottom: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    paddingBottom: SPACING.md,
   },
   quizTypeCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: SPACING.sm,
-    padding: SPACING.sm,
-    flexDirection: 'row',
-    alignItems: 'center',
+    borderRadius: SPACING.md,
+    marginBottom: SPACING.md,
     borderWidth: 1,
-    shadowColor: '#000000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.04,
-    shadowRadius: SPACING.xs / 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
     elevation: 2,
   },
-  quizTypeIcon: {
-    width: SPACING.xxl,
-    height: SPACING.xxl,
-    borderRadius: SPACING.sm,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: SPACING.sm,
-  },
-  quizTypeEmoji: {
-    fontSize: 24,
-  },
-  quizTypeInfo: {
+  quizTypeGradient: {
     flex: 1,
+    borderRadius: SPACING.sm,
+    padding: SPACING.sm,
   },
-  quizTypeTitle: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 16,
-    color: '#495057',
-    fontWeight: '600',
-    marginBottom: SPACING.xs / 2,
-  },
-  quizTypeDescription: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 13,
-    color: '#6C757D',
-    fontWeight: '400',
-    marginBottom: SPACING.xs,
-  },
-  quizTypeMeta: {
+  quizTypeHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+  },
+  quizTypeIcon: {
+    fontSize: 24,
   },
   difficultyBadge: {
     paddingHorizontal: SPACING.xs,
@@ -573,37 +623,38 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '600',
   },
-  quizMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.xs / 2,
+  quizTypeTitle: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 18,
+    color: '#495057',
+    fontWeight: '700',
+    marginBottom: SPACING.xs,
   },
-  quizMetaText: {
+  quizTypeDescription: {
     fontFamily: 'Inter-Regular',
-    fontSize: 11,
+    fontSize: 14,
     color: '#6C757D',
     fontWeight: '400',
+    marginBottom: SPACING.xs,
   },
-  tipsContainer: {
+  quizTypeActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  startButton: {
     backgroundColor: '#FFFFFF',
     borderRadius: SPACING.sm,
     padding: SPACING.sm,
-    borderWidth: 1,
-    borderColor: '#F0F0F0',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
   },
-  tipsTitle: {
+  startButtonText: {
     fontFamily: 'Inter-SemiBold',
-    fontSize: 14,
+    fontSize: 15,
     color: '#495057',
     fontWeight: '600',
-    marginBottom: SPACING.xs,
-  },
-  tipsText: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 13,
-    color: '#6C757D',
-    fontWeight: '400',
-    marginBottom: SPACING.xs / 2,
   },
   quizContainer: {
     flex: 1,
@@ -611,18 +662,23 @@ const styles = StyleSheet.create({
   },
   quizHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: SPACING.md,
-    backgroundColor: '#FFFFFF',
-    borderRadius: SPACING.sm,
-    padding: SPACING.sm,
-    borderWidth: 1,
-    borderColor: '#F0F0F0',
   },
   progressContainer: {
     flex: 1,
     marginRight: SPACING.sm,
+  },
+  progressBar: {
+    height: 4,
+    backgroundColor: '#E9ECEF',
+    borderRadius: 2,
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: '#4ECDC4',
+    borderRadius: 2,
   },
   progressText: {
     fontFamily: 'Inter-SemiBold',
@@ -630,17 +686,6 @@ const styles = StyleSheet.create({
     color: '#495057',
     fontWeight: '600',
     marginBottom: SPACING.xs / 2,
-  },
-  progressBar: {
-    height: 4,
-    backgroundColor: '#E9ECEF',
-    borderRadius: 2,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    backgroundColor: '#4ECDC4',
-    borderRadius: 2,
   },
   timerContainer: {
     flexDirection: 'row',
@@ -653,24 +698,19 @@ const styles = StyleSheet.create({
     color: '#6C757D',
     fontWeight: '600',
   },
-  timerTextUrgent: {
-    color: '#FF6B6B',
-  },
-  questionScrollView: {
+  questionContainer: {
     flex: 1,
   },
   questionText: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 18,
+    fontFamily: 'Inter-Bold',
+    fontSize: 20,
     color: '#495057',
-    fontWeight: '600',
+    fontWeight: '700',
+    lineHeight: 28,
     marginBottom: SPACING.md,
-    textAlign: 'center',
-    lineHeight: 26,
   },
   optionsContainer: {
     gap: SPACING.sm,
-    marginBottom: SPACING.md,
   },
   optionButton: {
     backgroundColor: '#FFFFFF',
@@ -680,20 +720,32 @@ const styles = StyleSheet.create({
     borderColor: '#E9ECEF',
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     minHeight: 60,
   },
-  optionSelected: {
+  selectedOption: {
     borderColor: '#4ECDC4',
     backgroundColor: '#4ECDC415',
   },
-  optionCorrect: {
+  correctOption: {
     borderColor: '#28A745',
     backgroundColor: '#28A74515',
   },
-  optionIncorrect: {
+  wrongOption: {
     borderColor: '#DC3545',
     backgroundColor: '#DC354515',
+  },
+  optionContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  optionLabel: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 16,
+    color: '#495057',
+    fontWeight: '700',
+    marginRight: SPACING.sm,
+    width: 30,
   },
   optionText: {
     fontFamily: 'Inter-Medium',
@@ -703,26 +755,32 @@ const styles = StyleSheet.create({
     flex: 1,
     lineHeight: 22,
   },
-  optionTextSelected: {
+  selectedOptionText: {
     color: '#4ECDC4',
   },
-  optionTextCorrect: {
+  correctOptionText: {
     color: '#28A745',
   },
-  optionTextIncorrect: {
+  wrongOptionText: {
     color: '#DC3545',
+  },
+  optionIcon: {
+    width: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   explanationContainer: {
     backgroundColor: '#F8F9FA',
     borderRadius: SPACING.sm,
     padding: SPACING.sm,
+    marginTop: SPACING.md,
     borderWidth: 1,
     borderColor: '#E9ECEF',
-    marginBottom: SPACING.sm,
   },
   explanationTitle: {
     fontFamily: 'Inter-SemiBold',
-    fontSize: 15,
+    fontSize: 16,
     color: '#495057',
     fontWeight: '600',
     marginBottom: SPACING.xs,
@@ -734,15 +792,22 @@ const styles = StyleSheet.create({
     fontWeight: '400',
     lineHeight: 20,
   },
+  quizActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: SPACING.md,
+  },
   nextButton: {
     backgroundColor: '#4ECDC4',
     borderRadius: SPACING.sm,
     padding: SPACING.sm,
+    flexDirection: 'row',
     alignItems: 'center',
-    marginVertical: SPACING.sm,
+    gap: SPACING.xs,
   },
   nextButtonDisabled: {
-    backgroundColor: '#E9ECEF',
+    backgroundColor: '#ADB5BD',
   },
   nextButtonText: {
     fontFamily: 'Inter-SemiBold',
@@ -750,29 +815,19 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '600',
   },
-  nextButtonTextDisabled: {
-    color: '#ADB5BD',
-  },
   resultContainer: {
     paddingHorizontal: SPACING.md,
   },
   scoreContainer: {
     alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: SPACING.md,
+    padding: SPACING.md,
     marginBottom: SPACING.md,
   },
-  scoreCircle: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: SPACING.sm,
-  },
-  scoreText: {
-    fontFamily: 'Inter-Bold',
-    fontSize: 28,
-    color: '#FFFFFF',
-    fontWeight: '700',
+  scoreIcon: {
+    fontSize: 48,
+    marginBottom: SPACING.xs,
   },
   scoreTitle: {
     fontFamily: 'Inter-Bold',
@@ -781,59 +836,51 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginBottom: SPACING.xs,
   },
-  scoreSubtitle: {
+  scoreValue: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 48,
+    color: '#495057',
+    fontWeight: '700',
+  },
+  performanceLevel: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 16,
+    color: '#495057',
+    fontWeight: '700',
+    marginBottom: SPACING.md,
+  },
+  scoreDetails: {
+    alignItems: 'center',
+    backgroundColor: '#F8F9FA',
+    borderRadius: SPACING.sm,
+    padding: SPACING.sm,
+    borderWidth: 1,
+    borderColor: '#E9ECEF',
+  },
+  scoreDetailText: {
     fontFamily: 'Inter-Regular',
     fontSize: 14,
     color: '#6C757D',
     fontWeight: '400',
-  },
-  resultStats: {
-    flexDirection: 'row',
-    backgroundColor: '#FFFFFF',
-    borderRadius: SPACING.sm,
-    padding: SPACING.sm,
-    marginBottom: SPACING.md,
-    borderWidth: 1,
-    borderColor: '#F0F0F0',
-  },
-  resultStat: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  resultStatNumber: {
-    fontFamily: 'Inter-Bold',
-    fontSize: 24,
-    color: '#495057',
-    fontWeight: '700',
     marginBottom: SPACING.xs / 2,
-  },
-  resultStatLabel: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 12,
-    color: '#6C757D',
-    fontWeight: '400',
   },
   resultActions: {
     flexDirection: 'row',
-    gap: SPACING.sm,
     marginBottom: SPACING.md,
+    gap: SPACING.xs,
   },
   actionButton: {
     flex: 1,
+    backgroundColor: '#4ECDC4',
+    borderRadius: SPACING.sm,
+    padding: SPACING.sm,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: SPACING.sm,
-    borderRadius: SPACING.sm,
     gap: SPACING.xs,
   },
-  retryButton: {
-    backgroundColor: '#4ECDC4',
-  },
-  homeButton: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E9ECEF',
+  primaryActionButton: {
+    backgroundColor: '#495057',
   },
   actionButtonText: {
     fontFamily: 'Inter-SemiBold',
@@ -841,26 +888,41 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '600',
   },
-  achievementContainer: {
-    backgroundColor: '#FFE66D15',
+  primaryActionButtonText: {
+    color: '#FFFFFF',
+  },
+  updatedStatsContainer: {
+    backgroundColor: '#FFFFFF',
     borderRadius: SPACING.sm,
     padding: SPACING.sm,
-    borderWidth: 1,
-    borderColor: '#FFE66D40',
-    alignItems: 'center',
+    marginBottom: SPACING.md,
   },
-  achievementTitle: {
-    fontFamily: 'Inter-SemiBold',
+  updatedStatsTitle: {
+    fontFamily: 'Inter-Bold',
     fontSize: 16,
     color: '#495057',
-    fontWeight: '600',
+    fontWeight: '700',
     marginBottom: SPACING.xs,
   },
-  achievementText: {
+  updatedStatsGrid: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+  },
+  updatedStatItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  updatedStatNumber: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 24,
+    color: '#495057',
+    fontWeight: '700',
+    marginBottom: SPACING.xs / 2,
+  },
+  updatedStatLabel: {
     fontFamily: 'Inter-Regular',
-    fontSize: 13,
+    fontSize: 12,
     color: '#6C757D',
     fontWeight: '400',
-    textAlign: 'center',
   },
 });
