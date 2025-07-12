@@ -4,6 +4,9 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, router } from 'expo-router';
 import { ArrowLeft, Heart, Volume2, BookOpen, Sparkles, Share, Star } from 'lucide-react-native';
 import { idioms } from '@/data/idioms';
+import { GaoPinApiService } from '@/services/gaoPinApi';
+import { ChengYuGaoPinApiRecord } from '@/services/supabase';
+import GaoPinInfo from '@/components/GaoPinInfo';
 
 const { width } = Dimensions.get('window');
 
@@ -71,6 +74,8 @@ export default function IdiomDetailScreen() {
   const [isFavorited, setIsFavorited] = useState(false);
   const [fadeAnim] = useState(new Animated.Value(0));
   const [scaleAnim] = useState(new Animated.Value(0.9));
+  const [gaoPinInfo, setGaoPinInfo] = useState<ChengYuGaoPinApiRecord | null>(null);
+  const [isLoadingGaoPin, setIsLoadingGaoPin] = useState(false);
   
   const idiom = idioms.find(item => item.id === id);
 
@@ -90,6 +95,26 @@ export default function IdiomDetailScreen() {
       }),
     ]).start();
   }, []);
+
+  // 查询高频词信息
+  useEffect(() => {
+    const fetchGaoPinInfo = async () => {
+      if (!idiom?.idiom) return;
+      
+      try {
+        setIsLoadingGaoPin(true);
+        const gaoPinData = await GaoPinApiService.getGaoPinByIdiomName(idiom.idiom);
+        setGaoPinInfo(gaoPinData);
+      } catch (error) {
+        console.error('查询高频词信息失败:', error);
+        // 不显示错误信息，因为大多数成语可能都不是高频词
+      } finally {
+        setIsLoadingGaoPin(false);
+      }
+    };
+
+    fetchGaoPinInfo();
+  }, [idiom?.idiom]);
 
   if (!idiom) {
     return (
@@ -283,6 +308,14 @@ export default function IdiomDetailScreen() {
         {renderMainIdiom()}
         
         <View style={styles.contentContainer}>
+          {/* 高频词信息 */}
+          {gaoPinInfo && (
+            <GaoPinInfo 
+              gaoPinInfo={gaoPinInfo} 
+              themeColors={categoryColors}
+            />
+          )}
+          
           {renderContentSection(
             '释义', 
             idiom.meaning, 

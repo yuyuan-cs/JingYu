@@ -283,7 +283,8 @@ export class GaoPinApiService {
         throw new Error(handleSupabaseError(error));
       }
 
-      const categories = [...new Set(data.map(item => item.Category))].filter(Boolean);
+      const categorySet = new Set(data.map(item => item.Category));
+      const categories = Array.from(categorySet).filter(Boolean);
       return categories.sort();
     } catch (error: any) {
       throw new Error(error.message || '获取分类列表失败');
@@ -329,6 +330,57 @@ export class GaoPinApiService {
       return transformGaoPinRecords(records);
     } catch (error: any) {
       throw new Error(error.message || '搜索高频成语失败');
+    }
+  }
+
+  // 根据成语名称查询高频词信息（用于成语详情页面的关联查询）
+  static async getGaoPinByIdiomName(idiomName: string): Promise<ChengYuGaoPinApiRecord | null> {
+    try {
+      const { data, error } = await supabase
+        .from(TABLES.CHENGYU_GAOPIN)
+        .select('*')
+        .eq('word', idiomName)
+        .single();
+
+      if (error) {
+        if (error.code === 'PGRST116') {
+          return null; // 未找到记录，这是正常情况
+        }
+        throw new Error(handleSupabaseError(error));
+      }
+
+      return transformGaoPinRecord(data as ChengYuGaoPinRecord);
+    } catch (error: any) {
+      throw new Error(error.message || '查询高频词信息失败');
+    }
+  }
+
+  // 批量查询多个成语的高频词信息
+  static async getGaoPinByIdiomNames(idiomNames: string[]): Promise<Record<string, ChengYuGaoPinApiRecord>> {
+    try {
+      if (idiomNames.length === 0) return {};
+
+      const { data, error } = await supabase
+        .from(TABLES.CHENGYU_GAOPIN)
+        .select('*')
+        .in('word', idiomNames);
+
+      if (error) {
+        throw new Error(handleSupabaseError(error));
+      }
+
+      const records = data as ChengYuGaoPinRecord[];
+      const transformedRecords = transformGaoPinRecords(records);
+      
+      // 转换为以成语名称为key的对象
+      const result: Record<string, ChengYuGaoPinApiRecord> = {};
+      transformedRecords.forEach(record => {
+        result[record.word] = record;
+      });
+
+      return result;
+    } catch (error: any) {
+      throw new Error(error.message || '批量查询高频词信息失败');
     }
   }
 } 

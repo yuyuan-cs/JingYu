@@ -9,7 +9,7 @@ import {
   Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { 
   ArrowLeft, 
   ArrowRight, 
@@ -24,12 +24,13 @@ import {
 
 import { useGaoPinLearning } from '../../hooks/useGaoPin';
 import { useLearningRecords } from '../../hooks/useLearningRecords';
-import { ChengYuGaoPinApiRecord } from '../../services/supabase';
+import { ChengYuGaoPinApiRecord, GaoPinLearningMode } from '../../services/supabase';
 
 const { width } = Dimensions.get('window');
 
 export default function GaoPinLearningPage() {
   const router = useRouter();
+  const params = useLocalSearchParams();
   const {
     gaoPinList,
     loading,
@@ -40,6 +41,7 @@ export default function GaoPinLearningPage() {
     getLearningProgress,
     isLearningComplete,
     resetLearningState,
+    startLearningSession,
   } = useGaoPinLearning();
 
   const { recordLearning } = useLearningRecords();
@@ -48,16 +50,57 @@ export default function GaoPinLearningPage() {
   const [showAnswer, setShowAnswer] = useState(false);
   const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
   const [slideAnim] = useState(new Animated.Value(0));
+  const [isInitialized, setIsInitialized] = useState(false);
 
   const currentGaoPin = gaoPinList[currentIndex];
 
+  // 初始化学习会话
   useEffect(() => {
-    if (gaoPinList.length === 0) {
-      Alert.alert('提示', '没有可学习的内容', [
+    const initializeLearningSession = async () => {
+      if (isInitialized || loading) return;
+      
+      try {
+        // 如果没有学习内容，启动默认学习会话
+        if (gaoPinList.length === 0) {
+          console.log('初始化学习会话，参数:', params);
+          
+          // 从URL参数获取学习配置，或使用默认配置
+          const mode = (params.mode as GaoPinLearningMode) || GaoPinLearningMode.RANDOM;
+          const category = params.category as string || undefined;
+          const difficulty = params.difficulty as ('high' | 'medium' | 'low') || undefined;
+          const count = params.count ? parseInt(params.count as string) : 20;
+
+          console.log('开始学习会话:', { mode, category, difficulty, count });
+
+          await startLearningSession({
+            mode,
+            category,
+            difficulty,
+            count,
+          });
+        }
+        setIsInitialized(true);
+      } catch (error) {
+        console.error('初始化学习会话失败:', error);
+        Alert.alert('错误', '初始化学习内容失败，请返回重试', [
+          { text: '返回', onPress: () => router.back() }
+        ]);
+      }
+    };
+
+    // 延迟执行，确保组件完全挂载
+    const timer = setTimeout(initializeLearningSession, 100);
+    return () => clearTimeout(timer);
+  }, [isInitialized, loading, gaoPinList.length, params, startLearningSession, router]);
+
+  // 监听学习内容变化
+  useEffect(() => {
+    if (isInitialized && gaoPinList.length === 0 && !loading) {
+      Alert.alert('提示', '没有找到符合条件的学习内容', [
         { text: '返回', onPress: () => router.back() }
       ]);
     }
-  }, [gaoPinList]);
+  }, [gaoPinList.length, loading, isInitialized, router]);
 
   useEffect(() => {
     // 重置动画
@@ -180,23 +223,50 @@ export default function GaoPinLearningPage() {
     }
   };
 
-  if (loading) {
+  if (loading || !isInitialized) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.loadingContainer}>
-          <Text style={styles.loadingText}>正在加载学习内容...</Text>
+          <Text style={styles.loadingText}>
+            {!isInitialized ? '正在初始化学习内容...' : '正在加载学习内容...'}
+          </Text>
         </View>
       </SafeAreaView>
     );
   }
 
-  if (error || gaoPinList.length === 0) {
+  if (error) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.errorContainer}>
-          <Text style={styles.errorText}>{error || '没有可学习的内容'}</Text>
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity 
+            onPress={() => {
+              setIsInitialized(false);
+              resetLearningState();
+            }} 
+            style={styles.retryButton}
+          >
+            <Text style={styles.retryButtonText}>重试</Text>
+          </TouchableOpacity>
           <TouchableOpacity onPress={() => router.back()} style={styles.backToHomeButton}>
             <Text style={styles.backToHomeButtonText}>返回</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (gaoPinList.length === 0) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>没有找到符合条件的学习内容</Text>
+          <Text style={styles.suggestionText}>
+            请尝试调整筛选条件或选择其他学习模式
+          </Text>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backToHomeButton}>
+            <Text style={styles.backToHomeButtonText}>返回重新选择</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -678,5 +748,24 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '500',
+  },
+  retryButton: {
+    backgroundColor: '#f39c12',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  retryButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  suggestionText: {
+    fontSize: 14,
+    color: '#666',
+    textAlign: 'center',
+    marginBottom: 16,
+    marginTop: 8,
   },
 }); 

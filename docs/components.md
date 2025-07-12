@@ -102,6 +102,81 @@ const styles = StyleSheet.create({
 2. **事件优化**: 使用 `hitSlop` 扩大触摸区域
 3. **样式优化**: 使用 `StyleSheet.create` 创建样式
 
+### GaoPinInfo 组件
+
+#### 功能描述
+`GaoPinInfo` 是高频词信息展示组件，用于在成语详情页面中显示该成语的高频词相关信息，包括分类、易混淆词汇、易错场景等。
+
+#### 组件接口
+
+```typescript
+interface GaoPinInfoProps {
+  gaoPinInfo: ChengYuGaoPinApiRecord;  // 高频词数据对象
+  themeColors?: [string, string];      // 主题色配置（可选，默认红黄渐变）
+}
+```
+
+#### 使用示例
+
+```typescript
+import GaoPinInfo from '@/components/GaoPinInfo';
+
+// 基本使用
+<GaoPinInfo gaoPinInfo={gaoPinData} />
+
+// 自定义主题色
+<GaoPinInfo 
+  gaoPinInfo={gaoPinData} 
+  themeColors={['#FF6B6B', '#FFE66D']} 
+/>
+```
+
+#### 功能模块
+
+##### 高频词标识区域
+- **高频词徽章**: 星形图标 + "高频词汇" 文字
+- **难度标识**: 根据difficulty属性显示颜色编码的难度等级
+
+##### 分类信息
+- **分类标签**: 显示高频词的使用分类（如商务用语、学术用语等）
+- **图标搭配**: 使用书籍图标增强视觉识别
+
+##### 详细信息展示
+- **易混淆词语**: 显示容易与当前成语混淆的词语
+- **混淆解释**: 解释为什么容易混淆及如何区分
+- **易错场景**: 描述使用该成语时容易出错的场景
+
+##### 标签系统
+- **动态标签**: 基于高频词数据自动生成标签
+- **智能分类**: 自动提取分类、易混淆、易错等标签
+
+#### 设计特性
+
+##### 视觉层次
+- **颜色编码**: 不同信息类型使用不同颜色背景
+- **图标系统**: 统一的图标语言提升识别度
+- **间距设计**: 合理的间距保证可读性
+
+##### 交互体验
+- **渐进展示**: 只显示有内容的信息模块
+- **主题适配**: 支持自定义主题色配色
+
+#### 样式配置
+
+```typescript
+const getDifficultyColor = (difficulty: string) => {
+  switch (difficulty) {
+    case 'high': return '#ff4757';    // 高难度 - 红色
+    case 'medium': return '#ffa502';  // 中等 - 橙色
+    case 'low': return '#2ed573';     // 简单 - 绿色
+    default: return '#747d8c';        // 未知 - 灰色
+  }
+};
+```
+
+#### 数据驱动渲染
+组件会根据传入的高频词数据自动判断需要显示的内容模块，实现智能化的信息展示。
+
 ## 页面组件
 
 ### 首页组件 (index.tsx)

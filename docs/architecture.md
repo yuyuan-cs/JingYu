@@ -101,8 +101,28 @@ interface Idiom {
 
 #### 数据管理策略
 - **静态数据**: 成语数据存储在本地文件中
+- **Supabase数据库**: 高频词数据存储在云端数据库
+- **数据关联**: 成语库与高频词库实现智能关联查询
 - **状态管理**: 使用 React Hooks 管理组件状态
 - **本地存储**: 收藏数据使用本地存储
+
+#### 数据库关联架构
+```typescript
+// 成语与高频词关联查询
+GaoPinApiService.getGaoPinByIdiomName(idiomName: string)
+  -> ChengYuGaoPinApiRecord | null
+
+// 关联数据结构
+interface ChengYuGaoPinApiRecord {
+  word: string;              // 高频词名称
+  category: string;          // 分类
+  confusableWord: string;    // 易混淆词语
+  confusionExplanation: string; // 混淆解释
+  errorProneScenario: string;   // 易错场景
+  difficulty: 'high' | 'medium' | 'low'; // 难度等级
+  tags: string[];            // 标签
+}
+```
 
 ### 4. 自定义 Hooks (`hooks/`)
 

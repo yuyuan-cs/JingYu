@@ -212,8 +212,21 @@ export default function GaoPinPage() {
         count: 20,
       });
       
-      // 导航到学习页面
-      router.push('/gaopin/learning');
+      // 导航到学习页面，传递学习参数
+      const queryParams = new URLSearchParams({
+        mode: selectedMode,
+        count: '20',
+      });
+      
+      if (selectedCategory) {
+        queryParams.append('category', selectedCategory);
+      }
+      
+      if (selectedDifficulty) {
+        queryParams.append('difficulty', selectedDifficulty);
+      }
+      
+      router.push(`/gaopin/learning?${queryParams.toString()}`);
     } catch (error) {
       Alert.alert('开始学习失败', error instanceof Error ? error.message : '请重试');
     }
