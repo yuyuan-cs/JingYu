@@ -156,13 +156,13 @@ export function useAuth() {
       setState(prev => ({ 
         ...prev, 
         loading: false, 
-        error: result.success ? null : (result.error || '注册失败')
+        error: result.success ? null : ((result as any).error ?? '注册失败')
       }));
       
       if (result.success) {
         console.log('✅ 注册成功');
       } else {
-        console.error('❌ 注册失败:', result.error);
+        console.error('❌ 注册失败:', (result as any).error ?? '注册失败');
       }
       
       return result;

@@ -66,7 +66,7 @@ export default function FavoritesScreen() {
   const handleIdiomPress = async (favorite: FavoriteWithIdiom) => {
     // 记录查看行为
     await recordView(favorite.idiom_id, 'favorite');
-    router.push(`/idiom/${favorite.idiom.derivation}`);
+    router.push(`/idiom/${favorite.idiom.id}`);
   };
 
   const handleRemoveFavorite = async (idiomId: string) => {

@@ -21,7 +21,7 @@ export default function SearchScreen() {
     
     debounceTimer.current = setTimeout(() => {
       setDebouncedQuery(searchQuery.trim());
-    }, 300);
+    }, 500); // 增加防抖时间到500ms
 
     return () => {
       if (debounceTimer.current) {
@@ -104,7 +104,9 @@ export default function SearchScreen() {
         {isLoading && (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="small" color="#FF6B6B" />
-            <Text style={styles.loadingText}>搜索中...</Text>
+            <Text style={styles.loadingText}>
+              {debouncedQuery.length > 0 ? '搜索中...' : '加载中...'}
+            </Text>
           </View>
         )}
       </View>

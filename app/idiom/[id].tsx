@@ -5,7 +5,9 @@ import { useLocalSearchParams, router } from 'expo-router';
 import { ArrowLeft, Heart, Volume2, BookOpen, Sparkles, Share, Star } from 'lucide-react-native';
 import { idioms } from '@/data/idioms';
 import { GaoPinApiService } from '@/services/gaoPinApi';
-import { ChengYuGaoPinApiRecord } from '@/services/supabase';
+import { ChengYuGaoPinApiRecord, ChengYuApiRecord } from '@/services/supabase';
+import { ChengYuService } from '@/services/supabaseService';
+import { CacheService } from '@/services/cacheService';
 import GaoPinInfo from '@/components/GaoPinInfo';
 
 const { width } = Dimensions.get('window');
@@ -76,8 +78,75 @@ export default function IdiomDetailScreen() {
   const [scaleAnim] = useState(new Animated.Value(0.9));
   const [gaoPinInfo, setGaoPinInfo] = useState<ChengYuGaoPinApiRecord | null>(null);
   const [isLoadingGaoPin, setIsLoadingGaoPin] = useState(false);
+  const [idiom, setIdiom] = useState<ChengYuApiRecord | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   
-  const idiom = idioms.find(item => item.id === id);
+  // 首先尝试从本地数据查找
+  const localIdiom = idioms.find(item => item.id === id);
+
+  // 加载成语数据
+  useEffect(() => {
+    const loadIdiom = async () => {
+      setIsLoading(true);
+      setError(null);
+      
+      try {
+        // 首先尝试从本地数据查找
+        if (localIdiom) {
+          setIdiom({
+            id: localIdiom.id,
+            idiom: localIdiom.idiom,
+            pinyin: localIdiom.pinyin,
+            meaning: localIdiom.meaning,
+            origin: localIdiom.origin,
+            example: localIdiom.example,
+            abbreviation: '',
+            pinyin_r: '',
+            first: '',
+            last: '',
+            category: localIdiom.category,
+            similar: localIdiom.similar,
+            difficulty: localIdiom.difficulty,
+          } as any);
+          return;
+        }
+        
+        // 尝试从缓存获取
+        const cached = await CacheService.get<ChengYuApiRecord>('idiom_details', { id });
+        if (cached) {
+          setIdiom({
+            ...cached,
+            category: '传统成语', // 默认分类
+            similar: [], // 默认空数组
+            difficulty: 'medium' as const, // 默认难度
+          } as any);
+          return;
+        }
+        
+        // 如果本地数据没有找到，尝试从 Supabase 获取
+        const supabaseIdiom = await ChengYuService.getIdiom(id as string);
+        const idiomWithDefaults = {
+          ...supabaseIdiom,
+          category: '传统成语', // 默认分类
+          similar: [], // 默认空数组
+          difficulty: 'medium' as const, // 默认难度
+        } as any;
+        
+        setIdiom(idiomWithDefaults);
+        
+        // 缓存结果
+        await CacheService.set('idiom_details', { id }, supabaseIdiom);
+      } catch (error: any) {
+        console.error('加载成语失败:', error);
+        setError(error.message || '成语未找到');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadIdiom();
+  }, [id, localIdiom]);
 
   useEffect(() => {
     // 入场动画
@@ -103,8 +172,24 @@ export default function IdiomDetailScreen() {
       
       try {
         setIsLoadingGaoPin(true);
+        
+        // 尝试从缓存获取高频词信息
+        const cached = await CacheService.get<ChengYuGaoPinApiRecord>('gaopin_info', { 
+          idiom: idiom.idiom 
+        });
+        
+        if (cached) {
+          setGaoPinInfo(cached);
+          return;
+        }
+        
         const gaoPinData = await GaoPinApiService.getGaoPinByIdiomName(idiom.idiom);
         setGaoPinInfo(gaoPinData);
+        
+        // 缓存高频词信息（即使为空也缓存，避免重复查询）
+        await CacheService.set('gaopin_info', { 
+          idiom: idiom.idiom 
+        }, gaoPinData);
       } catch (error) {
         console.error('查询高频词信息失败:', error);
         // 不显示错误信息，因为大多数成语可能都不是高频词
@@ -116,7 +201,21 @@ export default function IdiomDetailScreen() {
     fetchGaoPinInfo();
   }, [idiom?.idiom]);
 
-  if (!idiom) {
+  if (isLoading) {
+    return (
+      <View style={styles.container}>
+        <StatusBar barStyle="light-content" backgroundColor="#FF6B6B" />
+        <LinearGradient
+          colors={['#FF6B6B', '#FF8E53']}
+          style={styles.errorContainer}
+        >
+          <Text style={styles.errorText}>🔄 加载中...</Text>
+        </LinearGradient>
+      </View>
+    );
+  }
+
+  if (!idiom || error) {
     return (
       <View style={styles.container}>
         <StatusBar barStyle="light-content" backgroundColor="#FF6B6B" />
@@ -166,7 +265,7 @@ export default function IdiomDetailScreen() {
     return colors[category] || ['#FF8A80', '#FFD54F'];
   };
 
-  const categoryColors = getCategoryColor(idiom.category);
+  const categoryColors = getCategoryColor((idiom as any).category);
 
   const renderHeader = () => {
     const statusBarHeight = Platform.OS === 'ios' ? 44 : StatusBar.currentHeight || 24;
@@ -230,7 +329,7 @@ export default function IdiomDetailScreen() {
         <View style={styles.categoryBadgeContainer}>
           <View style={[styles.categoryBadge, { backgroundColor: `${categoryColors[0]}15`, borderColor: `${categoryColors[0]}40` }]}>
             <View style={[styles.categoryDot, { backgroundColor: categoryColors[0] }]} />
-            <Text style={[styles.categoryBadgeText, { color: categoryColors[0] }]}>{idiom.category}</Text>
+            <Text style={[styles.categoryBadgeText, { color: categoryColors[0] }]}>{(idiom as any).category}</Text>
           </View>
         </View>
       </View>
@@ -247,7 +346,8 @@ export default function IdiomDetailScreen() {
   );
 
   const renderSimilarIdioms = () => {
-    if (!idiom.similar.length) return null;
+    const similar = (idiom as any).similar || [];
+    if (!similar.length) return null;
 
     return (
       <View style={styles.similarSection}>
@@ -255,15 +355,15 @@ export default function IdiomDetailScreen() {
           <Text style={styles.sectionTitle}>相似成语</Text>
         </View>
         <View style={styles.similarContainer}>
-          {idiom.similar.map((similar, index) => (
+          {similar.map((similarItem: string, index: number) => (
             <TouchableOpacity
               key={index}
               style={[styles.similarTag, { backgroundColor: `${categoryColors[0]}10`, borderColor: `${categoryColors[0]}30` }]}
-              onPress={() => console.log('Navigate to:', similar)}
+              onPress={() => console.log('Navigate to:', similarItem)}
               activeOpacity={0.7}
             >
               <Text style={[styles.similarText, { color: categoryColors[0] }]}>
-                {similar}
+                {similarItem}
               </Text>
             </TouchableOpacity>
           ))}
@@ -288,8 +388,8 @@ export default function IdiomDetailScreen() {
     return (
       <View style={styles.difficultyContainer}>
         <Text style={styles.difficultyLabel}>难度等级</Text>
-        <View style={[styles.difficultyBadge, { backgroundColor: difficultyColors[idiom.difficulty] }]}>
-          <Text style={styles.difficultyText}>{difficultyLabels[idiom.difficulty]}</Text>
+        <View style={[styles.difficultyBadge, { backgroundColor: difficultyColors[((idiom as any).difficulty || 'medium') as keyof typeof difficultyColors] }]}>
+          <Text style={styles.difficultyText}>{difficultyLabels[((idiom as any).difficulty || 'medium') as keyof typeof difficultyLabels]}</Text>
         </View>
       </View>
     );

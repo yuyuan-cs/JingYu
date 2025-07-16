@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabaseApi, ApiResponse, ChengYuRecord, ChengYuApiRecord, UserRecord, LearningRecord, FavoriteRecord, QuizResultRecord, AchievementRecord, UserAchievementRecord, PaginatedResult, handleApiError } from '../services/supabaseApi';
+import { CacheService } from '../services/cacheService';
 
 // 通用状态类型
 interface UseApiState<T> {
@@ -169,6 +170,21 @@ export function useSupabaseIdiomSearch(query: string, type?: 'word' | 'pinyin' |
       setError(null);
       setCurrentQuery(searchQuery);
       
+      // 尝试从缓存获取
+      const cacheKey = `search_${searchQuery}_${searchType}_${pageNum}`;
+      const cached = await CacheService.get<{data: ChengYuApiRecord[], pagination: any}>('search_results', {
+        query: searchQuery,
+        type: searchType,
+        page: pageNum
+      });
+      
+      if (cached && !append) {
+        setData(cached.data);
+        setPagination(cached.pagination);
+        setLoading(false);
+        return;
+      }
+      
       const response = await supabaseApi.idioms.search({ 
         q: searchQuery.trim(), 
         type: searchType, 
@@ -180,6 +196,18 @@ export function useSupabaseIdiomSearch(query: string, type?: 'word' | 'pinyin' |
         const newData = response.data.data;
         setData(prev => append ? [...prev, ...newData] : newData);
         setPagination(response.data.pagination);
+        
+        // 缓存结果（只缓存第一页）
+        if (!append) {
+          await CacheService.set('search_results', {
+            query: searchQuery,
+            type: searchType,
+            page: pageNum
+          }, {
+            data: newData,
+            pagination: response.data.pagination
+          });
+        }
       } else {
         setError(response.error?.message || '搜索失败');
         setData([]);
